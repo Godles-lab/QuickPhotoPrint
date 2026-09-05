@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QSizeF, QMarginsF
+from PySide6.QtCore import QSizeF, QMarginsF, Qt
 from PySide6.QtGui import QPageSize,QPageLayout
 from PySide6.QtPrintSupport import QPrinter
 from core import Layout, render_page, convert_output, load_photo, check_profile, SRGB
@@ -93,4 +93,24 @@ def test_ui_controls_and_pdf(qt,tmp_path):
     box=pdf.pages[0].mediabox
     assert abs(float(box.width)*25.4/72-89)<.4
     assert abs(float(box.height)*25.4/72-127)<.4
+    w.close()
+
+
+def test_styled_sidebar_fits_and_mouse_pan(qt):
+    from app import configure_app
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QScrollArea
+    configure_app(qt)
+    w=Window(); w.show(); qt.processEvents()
+    scroll=w.findChild(QScrollArea)
+    assert scroll.widget().width()<=scroll.viewport().width()
+    w.photo=Image.new('RGB',(300,300),'blue');w.canvas.set_photo(w.photo)
+    w.full_region();qt.processEvents()
+    before=w.model.pan_x
+    start=w.canvas.paper.center().toPoint()
+    QTest.mousePress(w.canvas,Qt.MouseButton.LeftButton,pos=start)
+    QTest.mouseMove(w.canvas,start+QPoint(25,0))
+    QTest.mouseRelease(w.canvas,Qt.MouseButton.LeftButton,pos=start+QPoint(25,0))
+    assert w.model.pan_x>before
     w.close()

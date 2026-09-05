@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QRectF, QSizeF, QMarginsF, Signal, QSettings, QSt
 from PySide6.QtGui import QPainter, QColor, QPen, QPageSize, QPageLayout, QImage, QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QComboBox, QDoubleSpinBox, QSpinBox, QSlider, QFileDialog,
-    QMessageBox, QFormLayout, QGroupBox, QScrollArea, QCheckBox, QDialog)
+    QMessageBox, QFormLayout, QGroupBox, QScrollArea, QCheckBox, QDialog, QSizePolicy)
 from PySide6.QtPrintSupport import QPrinter, QPrinterInfo, QPrintDialog
 from core import Layout, PAPERS, load_photo, convert_output, render_page, check_profile
 
@@ -174,7 +174,7 @@ class Window(QMainWindow):
         row.addWidget(self.canvas, 1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(340)
+        scroll.setFixedWidth(390)
         side = QWidget()
         self.controls = QVBoxLayout(side)
         self.controls.setContentsMargins(10, 0, 8, 0)
@@ -182,6 +182,11 @@ class Window(QMainWindow):
         row.addWidget(scroll)
         outer.addLayout(row, 1)
         self.make_controls()
+        for combo in side.findChildren(QComboBox):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         hint = QLabel('拖动照片调整构图 · 滚轮缩放 · Shift + 拖动移动打印区域 · 拖右下角调整区域大小')
         hint.setWordWrap(True)
         hint.setObjectName('muted')
@@ -519,6 +524,27 @@ def configure_app(app):
 def main():
     app=QApplication(sys.argv)
     configure_app(app)
+    if '--smoke-test' in sys.argv:
+        # Exercise the frozen bundle with synthetic pixels only; never spool a job.
+        try:
+            import tempfile
+            w=Window(); w.show(); app.processEvents()
+            sample=convert_output(Image.new('RGB',(60,90),(128,128,128)),BUILTIN)
+            page=render_page(sample,Layout())
+            with tempfile.TemporaryDirectory() as folder:
+                p=QPrinter(QPrinter.PrinterMode.HighResolution)
+                p.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+                p.setOutputFileName(str(Path(folder)/'smoke.pdf'))
+                p.setPageSize(QPageSize(QSizeF(89,127),QPageSize.Unit.Millimeter))
+                p.setFullPage(True)
+                paint_printer(p,page)
+                assert (Path(folder)/'smoke.pdf').read_bytes().startswith(b'%PDF-')
+            w.close()
+            return 0
+        except Exception:
+            import traceback
+            if sys.stderr is not None: traceback.print_exc()
+            return 1
     w=Window(); w.show()
     if len(sys.argv)>1 and not sys.argv[1].startswith('--'): w.load(sys.argv[1])
     return app.exec()

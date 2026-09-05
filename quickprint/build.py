@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.metadata
 import platform
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ assets=ROOT/'build-assets'
 assets.mkdir(exist_ok=True)
 licenses=assets/'licenses'
 licenses.mkdir(exist_ok=True)
+shutil.copytree(ROOT/'licenses',licenses,dirs_exist_ok=True)
 for name in ['PySide6','PySide6_Essentials','shiboken6','Pillow']:
     dist=importlib.metadata.distribution(name)
     for f in dist.files or []:
@@ -36,6 +38,11 @@ if sys.platform=='darwin':
     cmd += ['--osx-bundle-identifier','io.github.godleslab.quickphotoprint']
 cmd.append(str(ROOT/'app.py'))
 subprocess.run(cmd,check=True,cwd=ROOT)
+# Launch the built executable, not the source interpreter, before releasing.
+executable = (ROOT/'dist'/f'{NAME}.app'/'Contents'/'MacOS'/NAME if sys.platform=='darwin'
+              else ROOT/'dist'/NAME/f'{NAME}.exe')
+env=dict(os.environ,QT_QPA_PLATFORM='offscreen')
+subprocess.run([str(executable),'--smoke-test'],env=env,check=True,timeout=90)
 release=ROOT/'release'; release.mkdir(exist_ok=True)
 arch=platform.machine().lower()
 if sys.platform=='darwin':
