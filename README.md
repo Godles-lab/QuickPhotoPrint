@@ -6,6 +6,8 @@
 
 ## 快速打印小工具
 
+[下载轻印 Windows / Mac 试用版](https://github.com/Godles-lab/Brother-T735DW-Kodak-Glossy/releases/tag/quickprint-v0.1.0)
+
 新增 [轻印 · Quick Photo Print](quickprint/README.md)：Windows / Mac 本地桌面工具，支持相纸尺寸、拖动构图、缩放旋转、白边、打印区域和 ICC 选择。首版为试用版本，实物打印颜色需先与 Photoshop 对比。
 
 ## 适用情况

@@ -2,6 +2,8 @@
 
 一个离线的 Windows / macOS 单张照片打印小工具。支持常见相纸及自定义尺寸，内置 Brother-T735DW-Kodak-Glossy（提亮 165）ICC，也可导入其他 RGB 输出 ICC / ICM。
 
+[下载 Windows / Apple Silicon Mac / Intel Mac 版本](https://github.com/Godles-lab/Brother-T735DW-Kodak-Glossy/releases/tag/quickprint-v0.1.0)
+
 ## 使用
 
 1. 打开或拖入 JPG、PNG、TIFF、BMP、WebP 照片。照片只在本机读取，不上传，也不会写入程序目录。RAW / HEIC 请先导出为带色彩配置的 JPG。
