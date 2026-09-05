@@ -1,81 +1,80 @@
-# Brother-T735DW-Kodak-Glossy
+<p align="center">
+  <img src="quickprint/assets/app-icon.png" alt="轻印图标" width="112">
+</p>
 
-用于 **Brother DCP-T735DW + 柯达高光照片纸** 的个人调色 ICC 配置文件，主要针对照片打印偏红、偏深的问题。
+<h1 align="center">轻印 QuickPhotoPrint</h1>
 
-[下载正式版 ICC](https://github.com/Godles-lab/Brother-T735DW-Kodak-Glossy/releases/latest/download/Brother-T735DW-Kodak-Glossy.icc) · [查看版本](https://github.com/Godles-lab/Brother-T735DW-Kodak-Glossy/releases)
+<p align="center">改善兄弟打印机照片打印体验，让照片排版和 ICC 配置管理更简单。</p>
 
-## 快速打印小工具
+<p align="center">
+  <a href="https://github.com/Godles-lab/QuickPhotoPrint/releases/latest">下载最新版本</a> ·
+  <a href="quickprint/README.md">使用说明</a> ·
+  <a href="https://github.com/Godles-lab/QuickPhotoPrint/issues">反馈问题</a>
+</p>
 
-[下载轻印 Windows / Mac 试用版](https://github.com/Godles-lab/Brother-T735DW-Kodak-Glossy/releases/tag/quickprint-v0.2.0)
+轻印是一款适用于 **Windows 和 macOS** 的轻量照片打印工具，主要围绕兄弟打印机的照片打印需求设计。可以在一个窗口中完成相纸设置、照片构图、打印预览，以及简单的 ICC 配置文件管理。照片在本机处理。
 
-新增 [轻印 · Quick Photo Print](quickprint/README.md)：Windows / Mac 本地桌面工具，支持相纸尺寸、拖动构图、缩放旋转、白边、打印区域和 ICC 选择。首版为试用版本，实物打印颜色需先与 Photoshop 对比。
+## 下载
 
-## 适用情况
+当前版本：**0.2.11**。解压即可使用，无需安装 Python。
 
-本配置根据 macOS 上 Photoshop 的实际试印反馈逐步调整，使用的相纸尺寸为 89 × 127 mm。尺寸本身不限制 ICC 的使用，但纸张种类、墨水、打印质量和驱动会影响结果。
+| 平台 | 下载 |
+| --- | --- |
+| Windows 10 / 11 · x64 | [QuickPhotoPrint-Windows-x64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-Windows-x64.zip) |
+| macOS 13+ · Apple Silicon（M 系列） | [QuickPhotoPrint-macOS-arm64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-macOS-arm64.zip) |
+| macOS 13+ · Intel | [QuickPhotoPrint-macOS-x86_64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-macOS-x86_64.zip) |
 
-这是个人经验补偿配置，不是 Brother 或 Kodak 官方配置，也不是用测色仪建立的打印机校准文件。已获满意反馈的是前一阶段的颜色效果；本正式版在此基础上继续提亮至 165，尚未记录该最终亮度版本的实物试印反馈。其他设备或纸张批次请先小幅试印。
+Windows 请完整解压，运行 `QuickPhotoPrint.exe`，保留同目录的 `_internal` 文件夹。Mac 将 `QuickPhotoPrint.app` 放入“应用程序”；更新时先退出旧版。当前应用尚未进行商业代码签名或 Apple 公证，如系统阻止打开，请核对下载来源后按系统提示处理。
 
-## macOS + Photoshop
+## 可以做什么
 
-1. 将 ICC 复制到 `~/Library/ColorSync/Profiles/`。如果目录不存在，可以自行创建；也可以放入 `/Library/ColorSync/Profiles/`（可能需要管理员权限）。
-2. 如果安装过同名旧版，替换旧文件，重新启动 Photoshop。
-3. 打开带有正确嵌入色彩描述文件的原图，进入“文件 → 打印”。
-4. “颜色处理”选择 **Photoshop 管理颜色**，“打印机配置文件”选择 **Brother-T735DW-Kodak-Glossy**。
-5. 本次调试使用相对比色、关闭黑点补偿。保持与试印一致的纸张类型、质量及驱动设置，不再叠加用于纠偏的曲线或颜色增强。
+- **照片排版**：常见相纸与自定义毫米尺寸，铺满或完整显示，拖动构图、缩放、旋转和四边留白。
+- **打印预览**：检查照片在纸上的位置与裁切；可用“预览尺寸补偿”按试印结果校准预览大小。
+- **ICC 配置管理**：导入、选择和移除 RGB ICC / ICM，内置 Brother DCP-T735DW 搭配柯达高光相纸的个人经验配置。
+- **简单颜色微调**：亮度、对比度、红、绿、蓝五项相对调节，可另存为独立 ICC 文件，在其他支持 ICC 的软件中使用。
+- **更顺畅的操作**：照片载入和打印准备显示进度，设置可保存为预设，滚轮不会误改参数，设置页按需显示滚动条。
 
-请将 ICC 选作打印输出配置，不要通过“指定配置文件”把原图的 sRGB 等源配置替换成它。
+## 开始打印
 
-## Windows
+1. 打开照片，选择打印机与实际使用的相纸尺寸。
+2. 在预览中调整构图、照片大小和留白。
+3. 选择由打印机管理颜色，或选择需要的 ICC。已有 ICC 可从颜色列表末尾导入。
+4. 点击“打印照片”，核对驱动中的纸张类型、质量和无边框设置。
 
-右键 ICC 文件，选择“安装配置文件”，重启 Photoshop，按上面的 Photoshop 流程选择它。
+Windows 的纸张类型和质量在系统打印窗口中选择；Mac 可在应用中选择驱动提供的介质和质量。
 
-ICC 文件可跨平台使用，但 Windows 驱动与 Mac 打印流程不同，不能保证直接得到相同颜色。先试印一张；使用 Photoshop 管理颜色时，关闭驱动额外的颜色调整（若驱动支持），不要叠加此前教程中的红 −20、绿 +15、蓝 +20 等补偿。仅安装 ICC 不会让所有应用自动使用它。
+## ICC 与预览
 
-## Windows：直接使用 Brother 驱动调整颜色
+**预览始终保留原照片色彩；ICC 和颜色微调作用于打印输出。** “预览尺寸补偿”只校准预览中的大小和裁切，不缩放打印照片。
 
-如果希望按分享者此前满意的 Windows 设置打印，可以在 Brother 驱动的“色彩管理 / 颜色增强”调整页面输入以下数值（入口名称可能随驱动版本不同）：
+微调默认全部为 **0**，表示在所选 ICC 基础上不再额外调整。另存的 ICC 已包含微调，导入后无需重复输入相同数值；另存后由用户自行导入，不自动加入列表。
 
-| 选项 | 数值 |
-| --- | ---: |
-| 色彩浓度 | 0 |
-| 白平衡 | 0 |
-| 亮度 | +1 |
-| 对比度 | +1 |
-| 红（R） | −20 |
-| 绿（G） | +15 |
-| 蓝（B） | +20 |
+内置 ICC 是个人试印形成的经验配置。其他兄弟机型、纸张、墨水或驱动可能需要不同配置；首次使用请先试印。使用应用管理颜色时，请核对驱动额外的颜色调整，避免重复调色。支持 RGB ICC，暂不支持 CMYK ICC。
 
-以上数值按分享者提供的 Windows 设置截图逐项抄录，适用于其 Brother DCP-T735DW + 柯达高光照片纸的试印经验。纸张类型按实际高光相纸选择，先试印确认效果。
+更多说明：[应用使用指南](quickprint/README.md) · [内置 ICC 说明](docs/ICC.md) · [更新记录](CHANGELOG.md)
 
-**这套驱动调整与本仓库 ICC 是两种可选用法，请勿叠加。** 使用上述数值时，让打印机驱动管理颜色，不再选择本仓库 ICC 做输出补偿；如果使用本仓库 ICC，则按前文 Photoshop 流程设置，关闭驱动额外的颜色调整。
+## 开发与构建
 
-## Mac 不使用 Photoshop
+使用 Python 3.12，在项目根目录运行：
 
-可以尝试系统自带的“色彩同步实用工具”：
+```sh
+python -m venv .venv
+# macOS: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python quickprint/app.py
+```
 
-1. 在“设备 → 打印机”中找到 Brother，记录原来的描述文件。如果支持修改“当前描述文件”，选择“其他”，指定此 ICC。
-2. 用该工具的“文件 → 打开”打开照片，再选择“文件 → 打印”。
-3. 在色彩同步实用工具的打印选项中，选择“预匹配至打印机描述文件”，意图选“相对比色”。
-4. 保持纸张、质量一致，先与 Photoshop 试印结果对照。
+测试与打包：
 
-具体选项取决于 macOS 和驱动；若 AirPrint 不提供自定义描述文件选项，可继续使用 Photoshop。更改设备默认描述文件可能影响其他采用该设备配置的应用，需要时恢复原设置。
+```sh
+cd quickprint
+python -m pytest -q
+python build.py
+```
 
-参考：[Apple：更改设备描述文件](https://support.apple.com/zh-cn/guide/colorsync-utility/csync005/mac)、[Apple：直接打印图像](https://support.apple.com/zh-cn/guide/colorsync-utility/csync4a8f2e5/mac)、[Adobe：Photoshop 打印颜色管理](https://helpx.adobe.com/photoshop/using/printing-color-management-photoshop1.html)。
+在目标操作系统构建，输出位于 `quickprint/release/`。GitHub Actions 会对 Windows x64、Mac Apple Silicon 和 Intel Mac 分别运行测试、构建应用并执行打包后自检。测试使用合成图像，不发送实物打印任务。
 
-## 版本信息
+## 许可与来源
 
-- 文件及内部显示名称：`Brother-T735DW-Kodak-Glossy`
-- 正式版：`v1.0.0`
-- 调整曲线输入中点：128
-- 提亮曲线输出中点：165
-- 各通道补偿曲线输出中点：R 112 / G 131 / B 125
-- 保留此前轻微对比度调整
-
-这些数值是生成补偿曲线的参数，不是要求在打印驱动中再次输入的滑块数值。
-
-文件已通过 macOS ICC 结构校验和生成转换的数值检查；这些检查不等于实物色准认证。下载后可用 `SHA256SUMS` 校验文件。
-
-## 来源说明
-
-配置生成过程使用了 Apple Generic RGB Profile 的色彩转换，ICC 内保留了相应来源说明（Copyright 2007 Apple Inc.）。仓库未附带 Apple 原始配置文件。本项目与 Brother、Kodak、Apple 无隶属关系。
+应用源码使用 [MIT 许可](LICENSE)。第三方组件许可见 [THIRD_PARTY.md](quickprint/THIRD_PARTY.md)。内置 ICC 保留原有版权与来源说明，不适用应用源码的 MIT 许可。本项目与 Brother、Kodak、Apple 无隶属关系。

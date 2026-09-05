@@ -1,14 +1,37 @@
-"""Pure layout and color conversion; shared by preview and print."""
-from dataclasses import dataclass
+"""Source photo loading, shared page geometry, and print-only output color conversion."""
+from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from PIL import Image, ImageCms, ImageOps
+from icc_edit import has_edit_marker
 
 PAPERS = [('3R · 89 × 127 mm', 89, 127), ('4R · 102 × 152 mm', 102, 152),
           ('5R · 127 × 178 mm', 127, 178), ('6R · 152 × 203 mm', 152, 203),
           ('A6 · 105 × 148 mm', 105, 148), ('A5 · 148 × 210 mm', 148, 210),
           ('A4 · 210 × 297 mm', 210, 297), ('自定义尺寸', 89, 127)]
 SRGB = ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB'))
+STANDARD_RGB = 'srgb'
+PREVIEW_SCALE_MIN = 90
+PREVIEW_SCALE_MAX = 200
+
+
+def paper_preset_index(width, height):
+    """Recognize a catalog size in either orientation at the editor's precision."""
+    dimensions=sorted((width,height))
+    for index,(_,w,h) in enumerate(PAPERS[:-1]):
+        if all(abs(a-b)<.05 for a,b in zip(dimensions,sorted((w,h)))):
+            return index
+    return len(PAPERS)-1
+
+
+def paper_description(width, height):
+    """Use the same nominal paper name as the picker, with explicit orientation."""
+    index=paper_preset_index(width,height)
+    if index==len(PAPERS)-1:
+        return f'自定义尺寸 · {width:g} × {height:g} mm'
+    name=PAPERS[index][0]
+    return f'{name}（横向）' if width>height else name
+
 
 @dataclass
 class Layout:
@@ -22,6 +45,28 @@ class Layout:
     zoom: float = 1
     pan_x: float = 0
     pan_y: float = 0
+
+    def margins(self):
+        """Physical distances from paper edges: left, top, right, bottom."""
+        return (self.x, self.y, max(0, self.paper_w-self.x-self.w), max(0, self.paper_h-self.y-self.h))
+
+    def set_margins(self, left, top, right, bottom):
+        import math
+        if any(not math.isfinite(v) or v < 0 for v in (left, top, right, bottom)):
+            raise ValueError('留白必须是非负的有限数值。')
+        updated = replace(self, x=left, y=top, w=round(self.paper_w-left-right, 8),
+                          h=round(self.paper_h-top-bottom, 8))
+        updated.validate()
+        self.x, self.y, self.w, self.h = updated.x, updated.y, updated.w, updated.h
+
+    def center_on_paper(self, minimum_margins=(0, 0, 0, 0)):
+        left, top, right, bottom = minimum_margins
+        # An asymmetric hardware boundary may require a smaller centered region.
+        w = min(self.w, self.paper_w-2*max(left, right))
+        h = min(self.h, self.paper_h-2*max(top, bottom))
+        self.set_margins((self.paper_w-w)/2, (self.paper_h-h)/2,
+                         (self.paper_w-w)/2, (self.paper_h-h)/2)
+        self.pan_x = self.pan_y = 0
 
     def validate(self):
         vals = (self.paper_w, self.paper_h, self.x, self.y, self.w, self.h, self.zoom, self.pan_x, self.pan_y)
@@ -76,19 +121,26 @@ def load_photo(path):
 
 
 def check_profile(path):
-    profile = ImageCms.getOpenProfile(str(path))
+    profile = SRGB if path == STANDARD_RGB else ImageCms.getOpenProfile(str(path))
     if profile.profile.xcolor_space.strip() != 'RGB':
         raise ValueError('此版本支持 RGB 输出 ICC；CMYK 配置暂不支持。')
     ImageCms.buildTransform(SRGB, profile, 'RGB', 'RGB', renderingIntent=1)
     return ImageCms.getProfileDescription(profile).strip()
 
 
-def convert_output(image, profile_path=None, intent=1, bpc=False):
+def convert_output(image, profile_path=None, intent=1, bpc=False, adjustment=None):
     if not profile_path:
         return image.copy()
     check_profile(profile_path)
-    return ImageCms.profileToProfile(image, SRGB, str(profile_path), outputMode='RGB',
-        renderingIntent=intent, flags=ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else 0)
+    target = SRGB if profile_path == STANDARD_RGB else str(profile_path)
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else 0
+    if (adjustment and adjustment.active) or has_edit_marker(profile_path):
+        # Keep the added device curves separate from the CMM's coarse RGB8 CLUT
+        # optimization, so print-time tuning and a reimported ICC agree within rounding.
+        flags |= ImageCms.Flags.NOOPTIMIZE
+    converted = ImageCms.profileToProfile(image, SRGB, target, outputMode='RGB',
+        renderingIntent=intent, flags=flags)
+    return adjustment.apply(converted) if adjustment and adjustment.active else converted
 
 
 def render_page(image, layout, dpi=300):
@@ -110,3 +162,26 @@ def render_page(image, layout, dpi=300):
         resample=Image.Resampling.BICUBIC, fillcolor='white')
     page.paste(region, box[:2])
     return page
+
+
+def preview_compensated_rect(width, height, percent=100):
+    """Simulate centered driver enlargement in the preview, never in print data."""
+    import math
+    if not math.isfinite(percent) or not PREVIEW_SCALE_MIN <= percent <= PREVIEW_SCALE_MAX:
+        raise ValueError(f'预览尺寸补偿需在 {PREVIEW_SCALE_MIN}%–{PREVIEW_SCALE_MAX}%。')
+    scale=percent/100
+    return ((1-scale)*width/2,(1-scale)*height/2,width*scale,height*scale)
+
+
+def render_output(image, layout, dpi=300, *, minimum_margins=(0, 0, 0, 0)):
+    """Render the requested layout at physical size; preview calibration is separate."""
+    page = render_page(image, layout, dpi)
+    if not any(minimum_margins):
+        return page
+    left, top, right, bottom = minimum_margins
+    sx, sy = page.width/layout.paper_w, page.height/layout.paper_h
+    box = (round(left*sx), round(top*sy), round((layout.paper_w-right)*sx),
+           round((layout.paper_h-bottom)*sy))
+    output = Image.new('RGB', page.size, 'white')
+    output.paste(page.crop(box), box[:2])
+    return output

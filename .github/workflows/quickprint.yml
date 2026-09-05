@@ -1,4 +1,4 @@
-name: Build Quick Photo Print
+name: Build QuickPhotoPrint
 on:
   workflow_dispatch:
   push:
@@ -28,9 +28,11 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: quickprint/requirements.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            quickprint/requirements.txt
       - name: Install
-        run: python -m pip install -r requirements.txt pyinstaller==6.19.0 pytest==9.0.2 pypdf==6.7.1
+        run: python -m pip install -r ../requirements-dev.txt
       - name: Test layout, ICC and printing engine
         env:
           QT_QPA_PLATFORM: offscreen

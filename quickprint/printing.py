@@ -1,7 +1,51 @@
 """Driver-native media selection and Qt system-dialog localization."""
 from pathlib import Path
+import subprocess
+import sys
 from PySide6.QtCore import QLocale, QTranslator, QLibraryInfo, QSizeF, QMarginsF
 from PySide6.QtGui import QPageSize, QPageLayout
+from PySide6.QtPrintSupport import QPrinter
+
+
+PRINTER_STATUS_LABELS = {
+    'online': '在线', 'busy': '正在打印', 'offline': '离线',
+    'paused': '已暂停', 'error': '错误', 'unknown': '状态未知',
+}
+
+
+def cups_offline_status(printer_name):
+    """Return True/False from CUPS, or None when the status cannot be read."""
+    if sys.platform != 'darwin' or not printer_name:
+        return None
+    try:
+        result = subprocess.run(['/usr/bin/lpstat', '-l', '-p', printer_name],
+                                capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode:
+        return None
+    return 'offline-report' in result.stdout.casefold()
+
+
+def printer_status(info):
+    """Map the system queue state to a compact status used by the printer list."""
+    state = info.state()
+    if state == QPrinter.PrinterState.Error:
+        code = 'error'
+    elif state == QPrinter.PrinterState.Aborted:
+        code = 'paused'
+    else:
+        offline = cups_offline_status(info.printerName())
+        if offline is True:
+            code = 'offline'
+        elif state == QPrinter.PrinterState.Active:
+            code = 'busy'
+        elif state == QPrinter.PrinterState.Idle and (sys.platform != 'darwin' or offline is False):
+            code = 'online'
+        else:
+            code = 'unknown'
+    return code, PRINTER_STATUS_LABELS[code]
+from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
 
 
 def borderless_page(page):
@@ -49,6 +93,25 @@ def configure_paper(printer, info, width, height, borderless=False):
     if abs(actual.width()-width)>1 or abs(actual.height()-height)>1:
         raise ValueError('驱动没有保留所选纸张尺寸，本次未打开打印窗口。')
     return page
+
+
+def printer_minimum_margins(printer):
+    layout = printer.pageLayout()
+    layout.setUnits(QPageLayout.Unit.Millimeter)
+    margins = layout.minimumMargins()
+    return tuple(max(0, v) for v in (margins.left(), margins.top(), margins.right(), margins.bottom()))
+
+
+def read_printable_margins(printer_name, width, height, borderless=False, dpi=300):
+    """Query the configured driver without creating or submitting a print job."""
+    info = QPrinterInfo.printerInfo(printer_name or '')
+    if info.isNull():
+        return None
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setPrinterName(info.printerName())
+    printer.setResolution(dpi)
+    configure_paper(printer, info, width, height, borderless)
+    return printer_minimum_margins(printer)
 
 
 def install_system_translations(app, base, locale=None):

@@ -1,0 +1,60 @@
+"""Print confirmation using the application's shared visual style."""
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
+                              QWidget, QLabel, QPushButton, QSizePolicy)
+
+
+class PrintConfirmationDialog(QDialog):
+    def __init__(self,details,parent=None):
+        super().__init__(parent)
+        self.setObjectName('printConfirmation')
+        self.setWindowTitle('确认打印')
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint,False)
+
+        layout=QVBoxLayout(self)
+        layout.setContentsMargins(24,24,24,24)
+        layout.setSpacing(20)
+        title=QLabel('确认打印',self)
+        title.setObjectName('dialogTitle')
+        layout.addWidget(title)
+
+        card=QWidget(self)
+        card.setObjectName('printDetails')
+        grid=QGridLayout(card)
+        grid.setContentsMargins(20,18,20,18)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(14)
+        grid.setColumnMinimumWidth(0,72)
+        grid.setColumnStretch(1,1)
+        for row,(label,text) in enumerate(details):
+            key=QLabel(label,card)
+            key.setObjectName('muted')
+            key.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            value=QLabel(str(text),card)
+            value.setTextFormat(Qt.TextFormat.PlainText)
+            value.setWordWrap(True)
+            value.setMinimumWidth(0)
+            policy=value.sizePolicy()
+            policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+            value.setSizePolicy(policy)
+            grid.addWidget(key,row,0)
+            grid.addWidget(value,row,1)
+        layout.addWidget(card)
+
+        buttons=QHBoxLayout()
+        buttons.setSpacing(10)
+        buttons.addStretch()
+        self.cancel_button=QPushButton('取消',self)
+        self.cancel_button.setMinimumWidth(88)
+        self.cancel_button.setAutoDefault(False)
+        self.cancel_button.clicked.connect(self.reject)
+        buttons.addWidget(self.cancel_button)
+        self.print_button=QPushButton('打印',self)
+        self.print_button.setObjectName('primary')
+        self.print_button.setMinimumWidth(88)
+        self.print_button.setDefault(True)
+        self.print_button.clicked.connect(self.accept)
+        buttons.addWidget(self.print_button)
+        layout.addLayout(buttons)
+        self.ensurePolished()
+        self.setFixedSize(500,layout.totalHeightForWidth(500))

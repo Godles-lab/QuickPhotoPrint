@@ -1,0 +1,4 @@
+-r quickprint/requirements.txt
+pytest==9.0.2
+pypdf==6.7.1
+pyinstaller==6.19.0
