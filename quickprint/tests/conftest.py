@@ -44,6 +44,8 @@ def isolated_settings(monkeypatch, tmp_path):
 def isolated_driver_margins(monkeypatch):
     # General geometry tests must not depend on the developer's installed printer.
     monkeypatch.setattr(app, 'read_printable_margins', lambda *args: (0, 0, 0, 0))
+    # Windows direct printing has its own driver/session integration tests.
+    monkeypatch.setattr(app, 'WINDOWS_PRINTING', False)
 
 
 @pytest.fixture(autouse=True)

@@ -68,7 +68,7 @@ if sys.platform=='darwin':
                  'CFBundleDevelopmentRegion':'zh-Hans',
                  'CFBundleLocalizations':['zh-Hans','zh-Hant','en'],
                  'CFBundleName':NAME,'CFBundleDisplayName':NAME,
-                 'CFBundleShortVersionString':'0.2.11'}
+                 'CFBundleShortVersionString':'0.2.12'}
     text=text.replace('bundle_identifier=',f'info_plist={bundle_info!r},\n    bundle_identifier=',1)
     spec.write_text(text)
 subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean',

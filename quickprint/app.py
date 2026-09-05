@@ -24,8 +24,11 @@ from print_dialog import PrintConfirmationDialog
 from background import BackgroundTask
 from progress_controls import PrintProgressButton, PhotoLoadingOverlay
 from scroll_controls import OverflowScrollBar
+from windows_printing import WindowsPrinting
+from printing import match_page
 
-VERSION = '0.2.11'
+VERSION = '0.2.12'
+WINDOWS_PRINTING = sys.platform == 'win32'
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 APP_ICON = BASE / 'assets' / 'app-icon.png'
 BUILTIN = BASE / 'profiles' / 'Brother-T735DW-Kodak-Glossy.icc'
@@ -301,6 +304,7 @@ class Window(QMainWindow):
         self._busy_kind = ''
         self._closed = False
         self.settings = QSettings('Godles-lab', 'QuickPhotoPrintLocal')
+        self.windows_printing = WindowsPrinting() if WINDOWS_PRINTING else None
         if not self.settings.contains('preset'):
             old=QSettings('Godles-lab','QuickPhotoPrint').value('preset','')
             if old: self.settings.setValue('preset',old)
@@ -366,6 +370,7 @@ class Window(QMainWindow):
         self.photo_task = BackgroundTask(self)
         self.photo_task.progress.connect(self.canvas.loading_overlay.set_text)
         self.print_task = BackgroundTask(self)
+        self.driver_task = BackgroundTask(self)
         self.print_task.progress.connect(self.print_btn.set_busy)
         self.load_preset(quiet=True)
         # Migrate the old implicit ICC default once; later explicitly saved choices persist.
@@ -394,6 +399,7 @@ class Window(QMainWindow):
         self._closed = True
         self.photo_task.stop()
         self.print_task.stop()
+        self.driver_task.stop()
         self.canvas.set_loading(False)
         self.print_btn.set_busy(None)
         self.status_timer.stop()
@@ -488,6 +494,11 @@ class Window(QMainWindow):
         f.addRow('打印机',self.printer_choice)
         refresh=QPushButton('刷新打印机列表'); refresh.clicked.connect(self.refresh_printers)
         f.addRow(refresh)
+        if self.windows_printing:
+            self.driver_settings_btn=QPushButton('驱动设置…')
+            self.driver_settings_btn.setToolTip('设置满幅、相纸类型和打印质量，保存后更新预览。')
+            self.driver_settings_btn.clicked.connect(self.open_driver_settings)
+            f.addRow(self.driver_settings_btn)
         self.borderless=QCheckBox('优先匹配无边框纸张')
         self.borderless.setToolTip('如果驱动列出同尺寸的无边框纸张，优先选择它；仍需设备支持。')
         f.addRow(self.borderless)
@@ -672,13 +683,14 @@ class Window(QMainWindow):
         try: self.media_options=capabilities(self.printer_choice.currentData())
         except Exception: self.media_options={}
         self.media_type.blockSignals(True)
-        self.media_type.clear();self.media_type.addItem('系统打印窗口中选择',None)
+        self.media_type.clear();self.media_type.addItem('使用驱动设置' if self.windows_printing else '系统打印窗口中选择',None)
         for value in self.media_options.get('MediaType',[]):
             self.media_type.addItem(LABELS.get(value,value),value)
         index=self.media_type.findData(previous)
         self.media_type.setCurrentIndex(max(0,index))
         self.media_type.blockSignals(False)
         self.print_quality.clear()
+        if self.windows_printing:self.print_quality.addItem('使用驱动设置',None)
         for value in self.media_options.get('cupsPrintQuality',[]):
             self.print_quality.addItem(QUALITY.get(value,value),value)
         quality=self.print_quality.findData(previous_quality)
@@ -688,7 +700,74 @@ class Window(QMainWindow):
 
     def media_changed(self):
         direct=bool(self.media_type.currentData())
-        self.print_quality.setEnabled(direct);self.copies.setEnabled(direct)
+        self.print_quality.setEnabled(direct);self.copies.setEnabled(direct or bool(self.windows_printing))
+        self.media_type.setEnabled(not self.windows_printing)
+
+    def windows_driver_mode(self, name):
+        try:
+            return json.loads(self.settings.value('windowsDriverModes','{}')).get(name,'')
+        except (ValueError,TypeError,AttributeError):
+            return ''
+
+    def windows_configuration(self, name, width, height, borderless, saved):
+        info=QPrinterInfo.printerInfo(name or '')
+        if info.isNull():raise ValueError('所选打印机已不可用，请刷新打印机列表。')
+        matched=match_page(info.supportedPageSizes(),width,height,borderless)
+        return self.windows_printing.prepare(name,matched,width,height,saved)
+
+    def open_driver_settings(self):
+        if self._busy_kind or self._closed:return
+        name=self.printer_choice.currentData()
+        if not name:return self.error('请先选择打印机。')
+        width,height=self.model.paper_w,self.model.paper_h
+        borderless=self.borderless.isChecked();saved=self.windows_driver_mode(name)
+        self.set_operation('driver')
+        self.driver_settings_btn.setText('打开驱动设置…')
+        def prepare(progress):
+            try:
+                return self.windows_configuration(name,width,height,borderless,saved)
+            except ValueError:
+                # A driver change or an unsupported current paper must not
+                # prevent the user opening its settings to correct the problem.
+                return self.windows_printing.defaults(name)
+        self.driver_task.start(prepare,self.edit_driver_configuration,self.driver_settings_failed)
+
+    def driver_settings_failed(self,error):
+        self.driver_settings_btn.setText('驱动设置…')
+        self.set_operation()
+        self.error(f'无法打开驱动设置：{error}')
+
+    def edit_driver_configuration(self,configuration):
+        try:
+            updated=self.windows_printing.edit(configuration,int(self.winId()))
+            if updated is None or self._closed:return
+            width,height=updated.geometry.size_mm
+            # Keep the app's familiar nominal photo-paper sizes (89 vs 88.9 mm).
+            if abs(width-self.model.paper_w)<=1 and abs(height-self.model.paper_h)<=1:
+                width,height=self.model.paper_w,self.model.paper_h
+            else:
+                for _,pw,ph in PAPERS[:-1]:
+                    if width>height:pw,ph=ph,pw
+                    if max(abs(width-pw),abs(height-ph))<=.8:
+                        width,height=pw,ph;break
+            if not (20<=width<=420 and 20<=height<=594):
+                raise ValueError('驱动纸张超出应用支持范围，请重新选择相纸尺寸。')
+            try:modes=json.loads(self.settings.value('windowsDriverModes','{}'))
+            except (ValueError,TypeError):modes={}
+            if not isinstance(modes,dict):modes={}
+            modes[updated.name]=updated.saved()
+            self.settings.setValue('windowsDriverModes',json.dumps(modes))
+            changed=abs(width-self.model.paper_w)>.05 or abs(height-self.model.paper_h)>.05
+            for field,value in ((self.pw,width),(self.ph,height)):
+                with QSignalBlocker(field):field.setValue(value)
+            self.model.paper_w,self.model.paper_h=self.pw.value(),self.ph.value()
+            self.sync_paper_choice()
+            self.refresh_printable_area(force=True,reset=changed)
+        except Exception as exc:
+            self.error(f'未能保存驱动设置：{exc}')
+        finally:
+            self.driver_settings_btn.setText('驱动设置…')
+            self.set_operation()
 
     def profile_changed(self):
         profile = self.profile.selected_profile()
@@ -758,7 +837,12 @@ class Window(QMainWindow):
                      self.borderless.isChecked(), self.dpi.currentData())
         if force or signature != self._driver_signature:
             try:
-                minimum = read_printable_margins(*signature)
+                if self.windows_printing:
+                    configuration=self.windows_configuration(*signature[:4],
+                        self.windows_driver_mode(signature[0]))
+                    minimum=configuration.geometry.margins_mm
+                else:
+                    minimum = read_printable_margins(*signature)
                 minimum = validated_driver_margins(minimum, self.model.paper_w, self.model.paper_h)
             except Exception:
                 minimum = None
@@ -966,7 +1050,8 @@ class Window(QMainWindow):
                 'bpc':self.bpc.isChecked(), 'adjustment':self.tuning.adjustment(), 'dpi':dpi,
                 'name':self.printer_choice.currentData(), 'borderless':self.borderless.isChecked(),
                 'media':self.media_type.currentData(), 'quality':self.print_quality.currentData(),
-                'copies':self.copies.value(), 'minimum_margins':self.driver_margins}
+                'copies':self.copies.value(), 'minimum_margins':self.driver_margins,
+                'windows_mode':self.windows_driver_mode(self.printer_choice.currentData())}
 
     def print_photo(self):
         if self._busy_kind or self._closed: return
@@ -985,6 +1070,12 @@ class Window(QMainWindow):
             if request['profile']:check_profile(request['profile'])
             info=QPrinterInfo.printerInfo(request['name'] or '')
             if info.isNull():raise ValueError('所选打印机已不可用，请刷新打印机列表。')
+            if self.windows_printing:
+                configuration=self.windows_configuration(request['name'],model.paper_w,model.paper_h,
+                    request['borderless'],request['windows_mode'])
+                request['windows_configuration']=configuration
+                minimum=validated_driver_margins(configuration.geometry.margins_mm,model.paper_w,model.paper_h)
+                return info,None,minimum,None
             try:
                 minimum=read_printable_margins(request['name'],model.paper_w,model.paper_h,request['borderless'],dpi)
                 minimum=validated_driver_margins(minimum,model.paper_w,model.paper_h)
@@ -1008,6 +1099,9 @@ class Window(QMainWindow):
         request['layout']=Layout(**asdict(self.model))
         request['minimum_margins']=self.driver_margins
         self.settings.setValue('printer',request['name'])
+        if 'windows_configuration' in request:
+            self.print_windows(request,info)
+            return
         if request['media']:
             self.print_with_media(info,matched,request['dpi'],request=request,options=options)
             return
@@ -1031,6 +1125,21 @@ class Window(QMainWindow):
             raise ValueError('系统最终可打印边距与预览不一致。本次未发送，请核对无边框模式并刷新打印机后重试。')
         self.printer.setFullPage(True)
         self.submit_prepared_photo(request)
+
+    def print_windows(self,request,info):
+        model=request['layout'];left,top,right,bottom=model.margins()
+        borderless=not any(v>.05 for v in request['minimum_margins'])
+        paper=paper_description(model.paper_w,model.paper_h)
+        if borderless:paper+=' · 无边框'
+        details=[('打印机',info.description() or info.printerName()),('纸张',paper),
+                 ('纸张与质量','使用驱动设置'),('份数',str(request['copies'])),
+                 ('留白（mm）',f'上 {top:g} / 下 {bottom:g} / 左 {left:g} / 右 {right:g}'),
+                 ('ICC 配置',self.profile.currentText())]
+        self.print_btn.set_busy(None)
+        if PrintConfirmationDialog(details,self).exec()!=QDialog.DialogCode.Accepted:
+            self.set_operation()
+            return
+        if not self._closed:self.submit_prepared_photo(request)
 
     def print_with_media(self, info, matched, dpi, *, request=None, options=None):
         if request is None:
@@ -1073,7 +1182,10 @@ class Window(QMainWindow):
             progress('生成排版…')
             page=render_output(converted,request['layout'],request['dpi'],
                                minimum_margins=request['minimum_margins'])
-            if arguments is None:
+            if 'windows_configuration' in request:
+                progress('正在提交…')
+                self.windows_printing.print_page(request['windows_configuration'],page,request['copies'])
+            elif arguments is None:
                 progress('正在提交…')
                 paint_printer(printer,page)
             else:

@@ -37,6 +37,21 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
+      - name: Prepare isolated Windows PDF driver
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Service Spooler
+          if (-not (Get-PrinterDriver -Name 'Microsoft Print To PDF' -ErrorAction SilentlyContinue)) {
+            Enable-WindowsOptionalFeature -Online -FeatureName Printing-PrintToPDFServices-Features -All -NoRestart
+            Add-PrinterDriver -Name 'Microsoft Print To PDF'
+          }
+          Add-Printer -Name 'QuickPhotoPrint-Test-PDF' -DriverName 'Microsoft Print To PDF' -PortName 'PORTPROMPT:'
+      - name: Verify native Windows driver output to PDF only
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/windows_driver_smoke.py
       - name: Build standalone app
         run: python build.py
       - uses: actions/upload-artifact@v4
