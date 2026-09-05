@@ -32,7 +32,7 @@ translations.mkdir(exist_ok=True)
 for f in Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)).glob('qtbase_*.qm'):
     shutil.copy2(f,translations/f.name)
 spec=Path(make_spec([str(ROOT/'app.py')],name=NAME,console=False,onefile=False,
-    specpath=str(assets),bundle_identifier='io.github.godleslab.quickphotoprint',
+    shorthand_manifest=None,specpath=str(assets),bundle_identifier='io.github.godleslab.quickphotoprint',
     datas=[(str(ROOT.parent/'Brother-T735DW-Kodak-Glossy.icc'),'profiles'),
            (str(licenses),'licenses'),(str(translations),'qt-translations'),(str(ROOT/'assets'),'assets'),
            (str(ROOT/'README.md'),'.'),(str(ROOT/'THIRD_PARTY.md'),'.')],
@@ -41,7 +41,7 @@ spec=Path(make_spec([str(ROOT/'app.py')],name=NAME,console=False,onefile=False,
 if sys.platform=='darwin':
     text=spec.read_text()
     assert 'app = BUNDLE(' in text
-    text=text.replace('app = BUNDLE(',"app = BUNDLE(info_plist={'CFBundleAllowMixedLocalizations': True, 'CFBundleShortVersionString': '0.2.0'},",1)
+    text=text.replace('bundle_identifier=',"info_plist={'CFBundleAllowMixedLocalizations': True, 'CFBundleShortVersionString': '0.2.0'},\n    bundle_identifier=",1)
     spec.write_text(text)
 subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean',
                 '--distpath',str(ROOT/'dist'),'--workpath',str(ROOT/'build'),str(spec)],check=True,cwd=ROOT)
