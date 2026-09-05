@@ -4,15 +4,16 @@ import sys
 from pathlib import Path
 from dataclasses import asdict
 from PIL import Image, ImageQt
-from PySide6.QtCore import Qt, QRectF, QSizeF, QMarginsF, Signal, QSettings, QStandardPaths
-from PySide6.QtGui import QPainter, QColor, QPen, QPageSize, QPageLayout, QImage, QAction, QKeySequence
+from PySide6.QtCore import Qt, QRectF, QSizeF, QMarginsF, Signal, QSettings, QStandardPaths, QObject, QEvent
+from PySide6.QtGui import QPainter, QColor, QPen, QPageSize, QPageLayout, QImage, QAction, QKeySequence, QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QComboBox, QDoubleSpinBox, QSpinBox, QSlider, QFileDialog,
-    QMessageBox, QFormLayout, QGroupBox, QScrollArea, QCheckBox, QDialog, QSizePolicy)
+    QMessageBox, QFormLayout, QGroupBox, QScrollArea, QCheckBox, QDialog, QSizePolicy, QTabWidget, QAbstractSpinBox)
 from PySide6.QtPrintSupport import QPrinter, QPrinterInfo, QPrintDialog
 from core import Layout, PAPERS, load_photo, convert_output, render_page, check_profile
+from printing import configure_paper, install_system_translations
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 BUILTIN = BASE / 'profiles' / 'Brother-T735DW-Kodak-Glossy.icc'
 if not BUILTIN.exists():
@@ -124,11 +125,7 @@ class Canvas(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def wheelEvent(self, e):
-        if self.paper.contains(e.position()):
-            self.zoomed.emit(5 if e.angleDelta().y() > 0 else -5)
-            e.accept()
-        else:
-            e.ignore()
+        e.ignore()  # Zoom changes only through explicit slider/input actions.
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls() and e.mimeData().urls()[0].isLocalFile():
@@ -138,11 +135,27 @@ class Canvas(QWidget):
         self.dropped.emit(e.mimeData().urls()[0].toLocalFile())
 
 
+class ParameterWheelGuard(QObject):
+    """Scrolling over a field scrolls its panel without changing the field."""
+    def eventFilter(self, obj, event):
+        if event.type()==QEvent.Type.Wheel:
+            parent=obj.parentWidget()
+            while parent is not None and not isinstance(parent,QScrollArea):
+                parent=parent.parentWidget()
+            if parent is not None:
+                bar=parent.verticalScrollBar()
+                delta=event.pixelDelta().y() or event.angleDelta().y()/120*bar.singleStep()*3
+                bar.setValue(bar.value()-round(delta))
+            event.accept()
+            return True
+        return super().eventFilter(obj,event)
+
+
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('轻印 · Quick Photo Print')
-        self.resize(1100, 820)
+        self.resize(1120, 810)
         self.model = Layout()
         self.photo = None
         self.source_photo = None
@@ -155,9 +168,10 @@ class Window(QMainWindow):
         outer = QVBoxLayout(host)
         outer.setContentsMargins(22, 18, 22, 14)
         header = QHBoxLayout()
-        title = QLabel('轻印  /  Quick Photo Print')
+        title = QLabel('轻印')
         title.setObjectName('title')
         header.addWidget(title)
+        wordmark=QLabel('PHOTO PRINT'); wordmark.setObjectName('wordmark'); header.addWidget(wordmark)
         header.addStretch()
         open_btn = QPushButton('打开照片…')
         open_btn.clicked.connect(self.open_photo)
@@ -165,6 +179,7 @@ class Window(QMainWindow):
         outer.addLayout(header)
         self.filename = QLabel('照片在本机处理，不会上传。')
         self.filename.setObjectName('muted')
+        self.filename.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
         outer.addWidget(self.filename)
         row = QHBoxLayout()
         self.canvas = Canvas(self.model)
@@ -172,26 +187,33 @@ class Window(QMainWindow):
         self.canvas.zoomed.connect(lambda d: self.zoom.setValue(self.zoom.value()+d))
         self.canvas.dropped.connect(self.load)
         row.addWidget(self.canvas, 1)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(390)
         side = QWidget()
+        side.setObjectName('sidebar')
         self.controls = QVBoxLayout(side)
-        self.controls.setContentsMargins(10, 0, 8, 0)
-        scroll.setWidget(side)
-        row.addWidget(scroll)
+        self.controls.setContentsMargins(16, 16, 16, 16)
+        self.controls.setSpacing(14)
+        self.tabs=QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setDrawBase(False)
+        self.controls.addWidget(self.tabs,1)
+        row.setSpacing(20)
+        row.addWidget(side)
         outer.addLayout(row, 1)
         self.make_controls()
         for combo in side.findChildren(QComboBox):
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(8)
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.wheel_guard=ParameterWheelGuard(self)
+        for field in side.findChildren(QWidget):
+            if isinstance(field,(QComboBox,QAbstractSpinBox,QSlider)):
+                field.installEventFilter(self.wheel_guard)
+                if isinstance(field,QAbstractSpinBox):
+                    field.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         side.ensurePolished()
-        self.controls.activate()
-        # Native fonts and high-DPI metrics differ across Windows and macOS.
-        scroll.setFixedWidth(max(390, side.minimumSizeHint().width()+32))
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        hint = QLabel('拖动照片调整构图 · 滚轮缩放 · Shift + 拖动移动打印区域 · 拖右下角调整区域大小')
+        needed=max(self.tabs.widget(i).widget().minimumSizeHint().width() for i in range(self.tabs.count()))
+        side.setFixedWidth(max(354,needed+56))
+        hint = QLabel('拖动照片调整构图  ·  Shift + 拖动移动区域  ·  拖动右下角调整区域大小')
         hint.setWordWrap(True)
         hint.setObjectName('muted')
         outer.addWidget(hint)
@@ -199,10 +221,10 @@ class Window(QMainWindow):
         self.status = QLabel('先打开照片，再调整版式。')
         self.status.setWordWrap(True)
         bottom.addWidget(self.status, 1)
-        export = QPushButton('导出排版 PNG…')
+        export = QPushButton('导出排版…')
         export.clicked.connect(self.export_png)
         bottom.addWidget(export)
-        self.print_btn = QPushButton('打印…')
+        self.print_btn = QPushButton('打印照片…')
         self.print_btn.setObjectName('primary')
         self.print_btn.setMinimumWidth(120)
         self.print_btn.clicked.connect(self.print_photo)
@@ -217,10 +239,23 @@ class Window(QMainWindow):
         self.sync_region()
 
     def group(self, name):
-        box = QGroupBox(name)
-        form = QFormLayout(box)
-        form.setSpacing(9)
-        self.controls.addWidget(box)
+        index=self.tabs.count()
+        page=QWidget()
+        layout=QVBoxLayout(page)
+        layout.setContentsMargins(0,18,8,4)
+        heading=QLabel(['纸张与设备','把照片放在合适的位置','选择适合相纸的颜色'][index])
+        heading.setObjectName('sectionTitle');layout.addWidget(heading)
+        description=QLabel(['先选打印机，纸张尺寸会自动匹配。','按毫米设置区域，预览会实时更新。','内置 Brother 配置，也可导入其他 ICC。'][index])
+        description.setObjectName('muted');description.setWordWrap(True);layout.addWidget(description)
+        box=QGroupBox()
+        form=QFormLayout(box)
+        form.setContentsMargins(0,12,0,0)
+        form.setSpacing(12)
+        layout.addWidget(box);layout.addStretch()
+        scroll=QScrollArea();scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        self.tabs.addTab(scroll,['相纸','排版','颜色'][index])
         return form
 
     def spin(self, low, high, value):
@@ -234,15 +269,23 @@ class Window(QMainWindow):
         return w
 
     def make_controls(self):
-        f = self.group('01  相纸')
+        f = self.group('01  打印机与相纸')
+        self.printer_choice=QComboBox()
+        self.printer_choice.setToolTip('先选择打印机，工具会匹配驱动中的相纸尺寸。')
+        self.refresh_printers()
+        f.addRow('打印机',self.printer_choice)
+        refresh=QPushButton('刷新打印机列表'); refresh.clicked.connect(self.refresh_printers); f.addRow(refresh)
+        self.borderless=QCheckBox('优先匹配无边框纸张')
+        self.borderless.setToolTip('如果驱动列出同尺寸的无边框纸张，优先选择它；仍需设备支持。')
+        f.addRow(self.borderless)
         self.paper_choice = QComboBox()
         for name, w, h in PAPERS:
             self.paper_choice.addItem(name, (w,h))
         f.addRow(self.paper_choice)
         self.pw = self.spin(20,420,89)
         self.ph = self.spin(20,594,127)
-        pair = QHBoxLayout(); pair.addWidget(self.pw); pair.addWidget(self.ph)
-        f.addRow('宽 / 高', pair)
+        f.addRow('纸张宽度',self.pw)
+        f.addRow('纸张高度',self.ph)
         orient = QPushButton('横竖切换')
         orient.clicked.connect(self.swap_paper)
         f.addRow(orient)
@@ -271,11 +314,16 @@ class Window(QMainWindow):
         pair = QHBoxLayout(); pair.addWidget(self.margin); pair.addWidget(apply_margin)
         f.addRow('四边留白',pair)
         self.region = []
-        for text, val in [('距左',0),('距上',0),('区域宽',89),('区域高',127)]:
-            spin = self.spin(0 if len(self.region)<2 else 5,594,val)
-            spin.valueChanged.connect(self.region_changed)
-            self.region.append(spin)
-            f.addRow(text,spin)
+        for pair_items in [[('距左',0),('距上',0)],[('区域宽',89),('区域高',127)]]:
+            row=QHBoxLayout()
+            for text,val in pair_items:
+                column=QVBoxLayout()
+                label=QLabel(text);label.setObjectName('muted')
+                spin=self.spin(0 if len(self.region)<2 else 5,594,val)
+                spin.valueChanged.connect(self.region_changed)
+                self.region.append(spin)
+                column.addWidget(label);column.addWidget(spin);row.addLayout(column)
+            f.addRow(row)
         full = QPushButton('恢复整张相纸区域'); full.clicked.connect(self.full_region); f.addRow(full)
 
         f = self.group('03  颜色与输出')
@@ -302,6 +350,16 @@ class Window(QMainWindow):
         restore = QPushButton('恢复预设'); restore.clicked.connect(self.load_preset)
         pair.addWidget(save); pair.addWidget(restore); self.controls.addLayout(pair)
         self.controls.addStretch()
+
+    def refresh_printers(self):
+        old=self.printer_choice.currentData() or self.settings.value('printer','')
+        self.printer_choice.clear()
+        default=QPrinterInfo.defaultPrinterName()
+        for info in QPrinterInfo.availablePrinters():
+            self.printer_choice.addItem(info.description() or info.printerName(),info.printerName())
+        selected=self.printer_choice.findData(old)
+        if selected<0: selected=self.printer_choice.findData(default)
+        self.printer_choice.setCurrentIndex(max(0,selected))
 
     def profile_changed(self):
         enabled = bool(self.profile.currentData())
@@ -423,17 +481,22 @@ class Window(QMainWindow):
                 raise ValueError('此尺寸在 600 dpi 下过大，请改为 300 dpi。')
             # Validate ICC before displaying the OS print dialog.
             if self.profile.currentData(): check_profile(self.profile.currentData())
+            name=self.printer_choice.currentData()
+            info=QPrinterInfo.printerInfo(name or '')
+            if info.isNull(): raise ValueError('所选打印机已不可用，请刷新打印机列表。')
+            if self.printer.printerName()!=name: self.printer.setPrinterName(name)
+            self.settings.setValue('printer',name)
             self.printer.setResolution(dpi)
             self.printer.setColorMode(QPrinter.ColorMode.Color)
             self.printer.setDocName('Quick Photo Print')
             w,h=self.model.paper_w,self.model.paper_h
-            orientation=QPageLayout.Orientation.Landscape if w>h else QPageLayout.Orientation.Portrait
-            page=QPageSize(QSizeF(min(w,h),max(w,h)),QPageSize.Unit.Millimeter,'Photo',QPageSize.SizeMatchPolicy.FuzzyMatch)
-            self.printer.setPageLayout(QPageLayout(page,orientation,QMarginsF(0,0,0,0),QPageLayout.Unit.Millimeter))
-            self.printer.setFullPage(True)
+            configure_paper(self.printer,info,w,h,self.borderless.isChecked())
             dialog=QPrintDialog(self.printer,self)
             dialog.setWindowTitle('打印照片 · 请核对相纸、无边距与颜色设置')
             if dialog.exec()!=QDialog.DialogCode.Accepted: return
+            selected=self.printer_choice.findData(self.printer.printerName())
+            if selected>=0: self.printer_choice.setCurrentIndex(selected)
+            self.settings.setValue('printer',self.printer.printerName())
             actual=self.printer.pageLayout().fullRect(QPageLayout.Unit.Millimeter)
             if abs(actual.width()-w)>1 or abs(actual.height()-h)>1:
                 raise ValueError(f'系统最终纸张为 {actual.width():.1f} × {actual.height():.1f} mm，与预览 {w:g} × {h:g} mm 不一致。本次未发送，请调整纸张后重试。')
@@ -453,7 +516,8 @@ class Window(QMainWindow):
     def save_preset(self):
         profile=self.profile.currentData()
         data={'layout':asdict(self.model),'profile':'builtin' if profile==str(BUILTIN) else profile,
-              'intent':self.intent.currentData(),'bpc':self.bpc.isChecked(),'dpi':self.dpi.currentData()}
+              'intent':self.intent.currentData(),'bpc':self.bpc.isChecked(),'dpi':self.dpi.currentData(),
+              'borderless':self.borderless.isChecked()}
         self.settings.setValue('preset',json.dumps(data))
         self.status.setText('已保存尺寸、构图和 ICC 预设，下次打开自动恢复；不保存照片。')
 
@@ -481,6 +545,7 @@ class Window(QMainWindow):
                 else: self.status.setText('预设 ICC 已找不到，请重新选择。')
             self.intent.setCurrentIndex(max(0,self.intent.findData(d.get('intent',1))))
             self.bpc.setChecked(bool(d.get('bpc',False)))
+            self.borderless.setChecked(bool(d.get('borderless',False)))
             self.dpi.setCurrentIndex(max(0,self.dpi.findData(d.get('dpi',300))))
             self.sync_region()
         except Exception:
@@ -506,23 +571,54 @@ def paint_printer(printer,page):
 
 
 def configure_app(app):
+    install_system_translations(app,BASE)
     app.setStyle('Fusion')
     app.setApplicationName('QuickPhotoPrint')
-    app.setStyleSheet('''
-        QWidget { font-size: 13px; color: #263747; }
-        QMainWindow, QScrollArea, QScrollArea > QWidget > QWidget { background: #f6f8fa; }
-        QScrollArea { border: none; }
-        QLabel#title { font-size: 22px; font-weight: 600; }
-        QLabel#muted { color: #617183; font-size: 12px; }
-        QGroupBox { background: white; border: 1px solid #dce3e9; border-radius: 8px; margin-top: 14px; padding: 14px 8px 8px; font-weight: 600; }
-        QGroupBox::title { subcontrol-origin: margin; left: 12px; }
-        QPushButton { background: white; border: 1px solid #cdd7e0; border-radius: 6px; padding: 8px 10px; }
-        QPushButton:hover { background: #e9f3f1; border-color: #278779; }
-        QPushButton#primary { background: #18796b; color: white; border: none; font-weight: 600; }
-        QComboBox, QSpinBox, QDoubleSpinBox { background: white; border: 1px solid #ccd6e0; border-radius: 4px; padding: 5px; min-height: 20px; }
-        QSlider::groove:horizontal { height: 4px; background: #dbe3ea; }
-        QSlider::handle:horizontal { width: 14px; margin: -5px 0; background: #18796b; border-radius: 7px; }
-    ''')
+    families=QFontDatabase.families()
+    for family in ('PingFang SC','Microsoft YaHei UI','Noto Sans CJK SC','Segoe UI'):
+        if family in families:
+            app.setFont(QFont(family,10));break
+    assets=(BASE/'assets').as_posix()
+    style = """
+        QWidget { font-size: 13px; color: #24333E; }
+        QMainWindow { background: #F5F7F9; }
+        QWidget#sidebar { background: #FFFFFF; border: 1px solid #E0E6EB; border-radius: 14px; }
+        QLabel#title { font-size: 27px; font-weight: 600; color: #173E36; }
+        QLabel#wordmark { font-size: 11px; font-weight: 600; color: #85948E; padding-left: 10px; }
+        QLabel#sectionTitle { font-size: 16px; font-weight: 600; padding-top: 2px; }
+        QLabel#muted { color: #73818D; font-size: 12px; }
+        QGroupBox { border: none; background: transparent; }
+        QScrollArea, QScrollArea > QWidget > QWidget, QTabWidget::pane { background: transparent; border: none; }
+        QTabBar::tab { background: #F1F4F6; color: #73818D; border: none; border-radius: 7px; padding: 9px 24px; margin: 0 3px 0 0; }
+        QTabBar::tab:selected { background: #E5F2ED; color: #176B56; font-weight: 600; }
+        QTabBar::tab:hover:!selected { background: #EAEFF2; }
+        QPushButton { background: #FFFFFF; border: 1px solid #DCE3E8; border-radius: 8px; padding: 9px 12px; }
+        QPushButton:hover { background: #F1F7F4; border-color: #90B7A7; }
+        QPushButton:pressed { background: #E5F0EA; }
+        QPushButton#primary { background: #18745D; color: white; border: 1px solid #18745D; font-weight: 600; padding: 10px 24px; }
+        QPushButton#primary:hover { background: #125E4B; }
+        QPushButton:disabled { color: #A2ADB5; background: #F1F4F6; }
+        QComboBox, QSpinBox, QDoubleSpinBox { background: #F8FAFB; border: 1px solid #E2E7EB; border-radius: 7px; padding: 7px 10px; min-height: 20px; selection-background-color: #D8EBE3; selection-color: #173E36; }
+        QComboBox { padding-right: 26px; }
+        QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border-color: #4B9B7E; background: white; }
+        QComboBox::drop-down { border: none; width: 26px; }
+        QComboBox::down-arrow { image: url(ASSET/chevron.svg); width: 16px; height: 16px; }
+        QComboBox QAbstractItemView { background: white; border: 1px solid #DFE6EA; padding: 5px; selection-background-color: #E5F2ED; selection-color: #176B56; outline: none; }
+        QSlider::groove:horizontal { height: 4px; background: #DFE7E3; border-radius: 2px; }
+        QSlider::sub-page:horizontal { background: #398F72; border-radius: 2px; }
+        QSlider::handle:horizontal { width: 14px; margin: -5px 0; background: #18745D; border-radius: 7px; }
+        QCheckBox { spacing: 8px; }
+        QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #CCD8D1; border-radius: 4px; background: white; }
+        QCheckBox::indicator:checked { background: #18745D; border-color: #18745D; image: url(ASSET/check.svg); }
+        QScrollBar:vertical { background: transparent; width: 7px; margin: 3px 0; }
+        QScrollBar::handle:vertical { background: #CBD5D9; border-radius: 3px; min-height: 38px; }
+        QScrollBar::handle:vertical:hover { background: #9FADB4; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; background: transparent; }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+        QToolTip { background: #263D35; color: white; border: none; padding: 6px; }
+    """
+    app.setStyleSheet(style.replace('ASSET',assets))
+
 
 
 def main():
@@ -532,6 +628,10 @@ def main():
         # Exercise the frozen bundle with synthetic pixels only; never spool a job.
         try:
             import tempfile
+            from PySide6.QtCore import QLocale
+            assert install_system_translations(app,BASE,QLocale('zh_CN'))
+            assert app.translate('QPrintDialog','Print')=='打印'
+            assert not QImage(str(BASE/'assets'/'chevron.svg')).isNull()
             w=Window(); w.show(); app.processEvents()
             sample=convert_output(Image.new('RGB',(60,90),(128,128,128)),BUILTIN)
             page=render_page(sample,Layout())

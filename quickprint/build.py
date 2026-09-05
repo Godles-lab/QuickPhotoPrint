@@ -25,19 +25,30 @@ for name in ['PySide6','PySide6_Essentials','shiboken6','Pillow']:
                 dest=licenses/name/Path(str(f)).name
                 dest.parent.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(src,dest)
-cmd=[sys.executable,'-m','PyInstaller','--noconfirm','--clean','--windowed','--onedir',
-     '--name',NAME,'--distpath',str(ROOT/'dist'),'--workpath',str(ROOT/'build'),
-     '--specpath',str(assets),'--add-data',f'{ROOT.parent / "Brother-T735DW-Kodak-Glossy.icc"}:profiles',
-     '--add-data',f'{licenses}:licenses',
-     '--add-data',f'{ROOT / "README.md"}:.',
-     '--add-data',f'{ROOT / "THIRD_PARTY.md"}:.',
-     '--exclude-module','PySide6.QtWebEngineCore','--exclude-module','PySide6.QtWebEngineWidgets',
-     '--exclude-module','PySide6.QtQml','--exclude-module','PySide6.QtQuick',
-     '--exclude-module','tkinter','--exclude-module','pytest']
+from PySide6.QtCore import QLibraryInfo
+from PyInstaller.building.makespec import main as make_spec
+translations=assets/'qt-translations'
+translations.mkdir(exist_ok=True)
+for f in Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)).glob('qtbase_*.qm'):
+    shutil.copy2(f,translations/f.name)
+spec=Path(make_spec([str(ROOT/'app.py')],name=NAME,console=False,onefile=False,
+    specpath=str(assets),bundle_identifier='io.github.godleslab.quickphotoprint',
+    datas=[(str(ROOT.parent/'Brother-T735DW-Kodak-Glossy.icc'),'profiles'),
+           (str(licenses),'licenses'),(str(translations),'qt-translations'),(str(ROOT/'assets'),'assets'),
+           (str(ROOT/'README.md'),'.'),(str(ROOT/'THIRD_PARTY.md'),'.')],
+    excludes=['PySide6.QtWebEngineCore','PySide6.QtWebEngineWidgets','PySide6.QtQml',
+              'PySide6.QtQuick','tkinter','pytest']))
 if sys.platform=='darwin':
-    cmd += ['--osx-bundle-identifier','io.github.godleslab.quickphotoprint']
-cmd.append(str(ROOT/'app.py'))
-subprocess.run(cmd,check=True,cwd=ROOT)
+    text=spec.read_text()
+    assert 'app = BUNDLE(' in text
+    text=text.replace('app = BUNDLE(',"app = BUNDLE(info_plist={'CFBundleAllowMixedLocalizations': True, 'CFBundleShortVersionString': '0.2.0'},",1)
+    spec.write_text(text)
+subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean',
+                '--distpath',str(ROOT/'dist'),'--workpath',str(ROOT/'build'),str(spec)],check=True,cwd=ROOT)
+if sys.platform=='darwin':
+    import plistlib
+    with (ROOT/'dist'/f'{NAME}.app'/'Contents'/'Info.plist').open('rb') as f:
+        assert plistlib.load(f)['CFBundleAllowMixedLocalizations'] is True
 # Launch the built executable, not the source interpreter, before releasing.
 executable = (ROOT/'dist'/f'{NAME}.app'/'Contents'/'MacOS'/NAME if sys.platform=='darwin'
               else ROOT/'dist'/NAME/f'{NAME}.exe')

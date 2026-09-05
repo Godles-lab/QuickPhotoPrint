@@ -114,3 +114,43 @@ def test_styled_sidebar_fits_and_mouse_pan(qt):
     QTest.mouseRelease(w.canvas,Qt.MouseButton.LeftButton,pos=start+QPoint(25,0))
     assert w.model.pan_x>before
     w.close()
+
+
+def test_driver_native_paper_match_and_orientation(qt):
+    from printing import match_page, configure_paper
+    normal=QPageSize(QSizeF(88.55,127),QPageSize.Unit.Millimeter,'3.5 x 5',QPageSize.SizeMatchPolicy.ExactMatch)
+    bleed=QPageSize(QSizeF(88.9,127),QPageSize.Unit.Millimeter,'3.5 x 5 Fullbleed',QPageSize.SizeMatchPolicy.ExactMatch)
+    assert match_page([normal,bleed],89,127,False) is normal
+    assert match_page([normal,bleed],89,127,True) is bleed
+    assert match_page([normal,bleed],127,89,True) is bleed
+    assert match_page([normal],210,297) is None
+    class Device:
+        def supportedPageSizes(self): return [normal,bleed]
+        def supportsCustomPageSizes(self): return True
+    printer=QPrinter();printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    result=configure_paper(printer,Device(),127,89,True)
+    assert result is bleed
+    assert abs(printer.pageLayout().fullRect(QPageLayout.Unit.Millimeter).width()-127)<.5
+
+
+def test_system_chinese_translation(qt):
+    from PySide6.QtCore import QLocale
+    from printing import install_system_translations
+    translators=install_system_translations(qt,Path(__file__).parent.parent,QLocale('zh_CN'))
+    assert translators
+    assert qt.translate('QPrintDialog','Print')=='打印'
+    for translator in translators: qt.removeTranslator(translator)
+
+
+def test_wheel_cannot_change_parameters(qt):
+    from PySide6.QtCore import QPoint,QPointF
+    from PySide6.QtGui import QWheelEvent
+    w=Window();w.show();qt.processEvents()
+    for field,getter in [(w.pw,w.pw.value),(w.zoom,w.zoom.value),(w.zoom_value,w.zoom_value.value),
+                         (w.paper_choice,w.paper_choice.currentIndex),(w.profile,w.profile.currentIndex)]:
+        before=getter()
+        event=QWheelEvent(QPointF(10,10),QPointF(10,10),QPoint(),QPoint(0,-120),
+                         Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.ScrollUpdate,False)
+        qt.sendEvent(field,event)
+        assert getter()==before
+    w.close()
