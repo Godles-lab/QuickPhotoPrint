@@ -186,6 +186,10 @@ class Window(QMainWindow):
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(8)
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        side.ensurePolished()
+        self.controls.activate()
+        # Native fonts and high-DPI metrics differ across Windows and macOS.
+        scroll.setFixedWidth(max(390, side.minimumSizeHint().width()+32))
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         hint = QLabel('拖动照片调整构图 · 滚轮缩放 · Shift + 拖动移动打印区域 · 拖右下角调整区域大小')
         hint.setWordWrap(True)
