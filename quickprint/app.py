@@ -1432,6 +1432,16 @@ def main():
                 p.setFullPage(True)
                 paint_printer(p,page)
                 assert (Path(folder)/'smoke.pdf').read_bytes().startswith(b'%PDF-')
+                # The CI-created virtual queue verifies that the frozen Windows
+                # EXE includes ImageWin and can execute the native GDI path.
+                import os
+                if (w.windows_printing and os.environ.get('CI')=='true' and
+                        os.environ.get('QUICKPRINT_TEST_PDF')=='1'):
+                    configuration=w.windows_printing.prepare('QuickPhotoPrint-Test-PDF',
+                        QPageSize(QPageSize.PageSizeId.A4),210,297)
+                    output=Path(folder)/'native-frozen.pdf'
+                    w.windows_printing.print_page(configuration,page,1,str(output))
+                    assert output.read_bytes().startswith(b'%PDF-') and output.stat().st_size>1000
             w.close()
             return 0
         except Exception:

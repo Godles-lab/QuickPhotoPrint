@@ -35,7 +35,15 @@ def main():
             assert abs(float(sheet.mediabox.width)*25.4/72-210)<.5
             assert abs(float(sheet.mediabox.height)*25.4/72-297)<.5
             assert len(sheet.images)>0
-    print('Native Windows DEVMODE/GDI: two PDF pages, exact A4 size, image output, saved settings passed.')
+        landscape=backend.prepare(name,page,297,210,config.saved())
+        output=Path(folder)/'landscape.pdf'
+        backend.print_page(landscape,Image.new('RGB',(594,420),'#a06040'),1,str(output))
+        pdf=PdfReader(output)
+        assert len(pdf.pages)==1
+        assert abs(float(pdf.pages[0].mediabox.width)*25.4/72-297)<.5
+        assert abs(float(pdf.pages[0].mediabox.height)*25.4/72-210)<.5
+        assert len(pdf.pages[0].images)>0
+    print('Native Windows DEVMODE/GDI: portrait/landscape PDF, copies, exact size, image output, saved settings passed.')
 
 
 if __name__=='__main__':main()

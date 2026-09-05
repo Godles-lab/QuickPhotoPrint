@@ -16,13 +16,13 @@
 
 ## 下载
 
-当前版本：**0.2.11**。解压即可使用，无需安装 Python。
+当前版本：**0.2.12**。解压即可使用，无需安装 Python。
 
 | 平台 | 下载 |
 | --- | --- |
-| Windows 10 / 11 · x64 | [QuickPhotoPrint-Windows-x64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-Windows-x64.zip) |
-| macOS 13+ · Apple Silicon（M 系列） | [QuickPhotoPrint-macOS-arm64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-macOS-arm64.zip) |
-| macOS 13+ · Intel | [QuickPhotoPrint-macOS-x86_64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.11/QuickPhotoPrint-macOS-x86_64.zip) |
+| Windows 10 / 11 · x64 | [QuickPhotoPrint-Windows-x64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.12/QuickPhotoPrint-Windows-x64.zip) |
+| macOS 13+ · Apple Silicon（M 系列） | [QuickPhotoPrint-macOS-arm64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.12/QuickPhotoPrint-macOS-arm64.zip) |
+| macOS 13+ · Intel | [QuickPhotoPrint-macOS-x86_64.zip](https://github.com/Godles-lab/QuickPhotoPrint/releases/download/quickprint-v0.2.12/QuickPhotoPrint-macOS-x86_64.zip) |
 
 Windows 请完整解压，运行 `QuickPhotoPrint.exe`，保留同目录的 `_internal` 文件夹。Mac 将 `QuickPhotoPrint.app` 放入“应用程序”；更新时先退出旧版。当前应用尚未进行商业代码签名或 Apple 公证，如系统阻止打开，请核对下载来源后按系统提示处理。
 
@@ -41,7 +41,7 @@ Windows 请完整解压，运行 `QuickPhotoPrint.exe`，保留同目录的 `_in
 3. 选择由打印机管理颜色，或选择需要的 ICC。已有 ICC 可从颜色列表末尾导入。
 4. 点击“打印照片”，核对驱动中的纸张类型、质量和无边框设置。
 
-Windows 的纸张类型和质量在系统打印窗口中选择；Mac 可在应用中选择驱动提供的介质和质量。
+Windows 先在“驱动设置…”里选择相纸类型、质量和“满幅”，保存后日常打印只显示轻印的确认框。Mac 可在应用中选择驱动提供的介质和质量。
 
 ## ICC 与预览
 

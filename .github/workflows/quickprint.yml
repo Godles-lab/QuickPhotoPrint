@@ -53,6 +53,8 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/windows_driver_smoke.py
       - name: Build standalone app
+        env:
+          QUICKPRINT_TEST_PDF: '1'
         run: python build.py
       - uses: actions/upload-artifact@v4
         with:
